@@ -22,8 +22,42 @@ const svg2_RENAME = d3.select("#lineChart2")
 // const tooltip = ...
 
 // 2.a: LOAD...
-d3.csv("YOUR_CSV_NAME.csv").then(data => {
+d3.csv("aircraft_incidents.csv").then(data => {
+    // Relevant columns:
+    // - number of incidents (y variable)
+    // - year (x variable)
+    // - injury severity (color variable)
+
     // 2.b: ... AND TRANSFORM DATA
+    data.forEach(d => {
+        let dateParts = d.Event_Date.split("/"); // Split MM/DD/YY
+        let twoDigitYear = +dateParts[2]; // Convert YY to a number
+
+        // Convert to four-digit year as a number
+        d.year = twoDigitYear < 50 ? 2000 + twoDigitYear : 1900 + twoDigitYear;
+
+        if (d.Injury_Severity.includes("Non-Fatal")) {
+            d.Injury_Severity = "Non-Fatal";  // Must check this first!
+        } else if (d.Injury_Severity.includes("Fatal")) {
+            d.Injury_Severity = "Fatal";
+        } else {
+            d.Injury_Severity = "Incident"; // Default category
+        }
+    });
+
+    const groupedData = d3.rollup(data,
+        v => v.length,  // Count incidents
+        d => d.year,    // Group by Year
+        d => d.Injury_Severity // Group by normalized Injury Severity
+    );
+
+    const yearCounts = Array.from(groupedData.values())
+    .map(severityMap => Array.from(severityMap.values()));
+
+    const maxCount = d3.max(yearCounts, severityCounts => d3.max(severityCounts));
+
+    console.log("Grouped Data:", groupedData);
+    console.log("Max Count:", maxCount);
 
     // 3.a: SET SCALES FOR CHART 1
 
