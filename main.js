@@ -3,94 +3,122 @@ const margin = { top: 50, right: 30, bottom: 60, left: 70 };
 const width = 900 - margin.left - margin.right;
 const height = 400 - margin.top - margin.bottom;
 
-// Create SVG containers for both charts
-const svg1_RENAME = d3.select("#lineChart1") // If you change this ID, you must change it in index.html too
-    .append("svg")
-    .attr("width", width + margin.left + margin.right)
-    .attr("height", height + margin.top + margin.bottom)
-    .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
+// Create an SVG container inside #lineChart1
+const svgLine = d3.select("#lineChart1")
+  .append("svg")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+  .attr("transform", `translate(${margin.left},${margin.top})`);
 
-const svg2_RENAME = d3.select("#lineChart2")
-    .append("svg")
-    .attr("width", width + margin.left + margin.right)
-    .attr("height", height + margin.top + margin.bottom)
-    .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
-
-// (If applicable) Tooltip element for interactivity
-// const tooltip = ...
-
-// 2.a: LOAD...
+// 2.a: LOAD and TRANSFORM DATA
 d3.csv("aircraft_incidents.csv").then(data => {
-    // Relevant columns:
-    // - number of incidents (y variable)
-    // - year (x variable)
-    // - injury severity (color variable)
 
-    // 2.b: ... AND TRANSFORM DATA
-    data.forEach(d => {
-        let dateParts = d.Event_Date.split("/"); // Split MM/DD/YY
-        let twoDigitYear = +dateParts[2]; // Convert YY to a number
+  data.forEach(d => {
+    const dateParts = d.Event_Date.split("/"); // Split MM/DD/YY
+    const twoDigitYear = +dateParts[2];        // Convert YY to a number
 
-        // Convert to four-digit year as a number
-        d.year = twoDigitYear < 50 ? 2000 + twoDigitYear : 1900 + twoDigitYear;
+    // Convert to four-digit year as a number
+    d.year = twoDigitYear < 50 ? 2000 + twoDigitYear : 1900 + twoDigitYear;
 
-        if (d.Injury_Severity.includes("Non-Fatal")) {
-            d.Injury_Severity = "Non-Fatal";  // Must check this first!
-        } else if (d.Injury_Severity.includes("Fatal")) {
-            d.Injury_Severity = "Fatal";
-        } else {
-            d.Injury_Severity = "Incident"; // Default category
-        }
-    });
+    // Normalize Injury_Severity
+    if (d.Injury_Severity.includes("Non-Fatal")) {
+      d.Injury_Severity = "Non-Fatal";  // Must check this first!
+    } else if (d.Injury_Severity.includes("Fatal")) {
+      d.Injury_Severity = "Fatal";
+    } else {
+      d.Injury_Severity = "Incident"; // Default category
+    }
+  });
 
-    const groupedData = d3.rollup(data,
-        v => v.length,  // Count incidents
-        d => d.year,    // Group by Year
-        d => d.Injury_Severity // Group by normalized Injury Severity
-    );
+// GROUP DATA by severity -> year -> count
+const categories = d3.rollup(data,
+    arr => d3.rollup(arr,
+      v => v.length,    // aggregator
+      d => d.year       // second-level grouping by year
+    ),
+    d => d.Injury_Severity  // top-level grouping by severity
+  );
 
-    const yearCounts = Array.from(groupedData.values())
-    .map(severityMap => Array.from(severityMap.values()));
+const yearCounts = Array.from(categories.values())
+    .map(yearMap => 
+        Array.from(yearMap.values()));
 
-    const maxCount = d3.max(yearCounts, severityCounts => d3.max(severityCounts));
+const maxCount = d3.max(yearCounts, countsThisCat => d3.max(countsThisCat));
 
-    console.log("Grouped Data:", groupedData);
-    console.log("Max Count:", maxCount);
+// 3.a: SET SCALES FOR CHART 1
+const allYears = Array.from(categories.values())
+    .flatMap(yearMap => Array.from(yearMap.keys()));
 
-    // 3.a: SET SCALES FOR CHART 1
+// Define xScale
+const xScale = d3.scaleLinear()
+    .domain(d3.extent(allYears))
+    .range([0, width]);
 
+// Define yScale
+const yScale = d3.scaleLinear()
+    .domain([0, maxCount + 1])
+    .range([height, 0])
+    .nice();
 
-    // 4.a: PLOT DATA FOR CHART 1
+// Define colorScale
+const colorScale = d3.scaleOrdinal()
+  .domain(Array.from(categories.keys()))   // e.g. ["Fatal", "Non-Fatal", "Incident"]
+  .range(d3.schemeCategory10);
 
+// LINE GENERATOR
+const line = d3.line()
+    .x(d => xScale(d.year))
+    .y(d => yScale(d.count));
 
-    // 5.a: ADD AXES FOR CHART 1
+// 4.a: PLOT DATA FOR CHART 1
+const lineData = Array.from(categories.entries());
 
+// CREATE PATHS (one per severity)
+svgLine.selectAll("path")
+.data(lineData)
+.enter()
+.append("path")
+.attr("fill", "none")
+.attr("stroke-width", 2)
+.attr("stroke", d => colorScale(d[0])) // d[0] is the severity key
+.attr("d", ([severity, yearMap]) => {
+    // Convert the yearMap => array of points
+    const points = Array.from(yearMap.entries())
+        .map(([year, count]) => ({ year, count }))
+        .sort((a, b) => d3.ascending(a.year, b.year));
+    return line(points);
+});
 
-    // 6.a: ADD LABELS FOR CHART 1
+// 5.a: ADD AXES FOR CHART 1
+// X-AXIS
+svgLine.append("g")
+    .attr("transform", `translate(0,${height})`)
+    .call(d3.axisBottom(xScale)
+        .tickFormat(d3.format("d")));
 
+// Y-AXIS
+svgLine.append("g")
+    .call(d3.axisLeft(yScale));
 
-    // 7.a: ADD INTERACTIVITY FOR CHART 1
-    
+// 6.a: ADD LABELS FOR CHART 1
+// X-axis label
+svgLine.append("text")
+    .attr("class", "axis-label")
+    .attr("x", width / 2)
+    .attr("y", height + margin.bottom - 10)
+    .attr("text-anchor", "middle")
+    .text("Year");
 
-    // ==========================================
-    //         CHART 2 (if applicable)
-    // ==========================================
+// Y-axis label
+svgLine.append("text")
+    .attr("class", "axis-label")
+    .attr("transform", "rotate(-90)")
+    .attr("y", -margin.left + 20)
+    .attr("x", -height / 2)
+    .attr("text-anchor", "middle")
+    .text("Number of Incidents");
 
-    // 3.b: SET SCALES FOR CHART 2
-
-
-    // 4.b: PLOT DATA FOR CHART 2
-
-
-    // 5.b: ADD AXES FOR CHART 
-
-
-    // 6.b: ADD LABELS FOR CHART 2
-
-
-    // 7.b: ADD INTERACTIVITY FOR CHART 2
-
+// 7.a: ADD INTERACTIVITY FOR CHART 1
 
 });
