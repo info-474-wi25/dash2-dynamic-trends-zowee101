@@ -11,6 +11,12 @@ const svgLine = d3.select("#lineChart1")
   .append("g")
   .attr("transform", `translate(${margin.left},${margin.top})`);
 
+const severityDisplayNames = {
+  "Fatal": "Fatal Injuries",
+  "Non-Fatal": "Non-Fatal Injuries",
+  "Incident": "Aircraft Damage"
+};
+
 // 2.a: LOAD and TRANSFORM DATA
 d3.csv("aircraft_incidents.csv").then(data => {
 
@@ -57,8 +63,8 @@ d3.csv("aircraft_incidents.csv").then(data => {
     .nice();
 
   const colorScale = d3.scaleOrdinal()
-    .domain(Array.from(categories.keys()))
-    .range(d3.schemeCategory10);
+    .domain(["Fatal", "Non-Fatal", "Incident"])  // your categories
+    .range(["#d7191c", "#fdae61", "#2c7bb6"]); 
 
   // LINE GENERATOR
   const line = d3.line()
@@ -109,7 +115,7 @@ d3.csv("aircraft_incidents.csv").then(data => {
     const showNonFatal = d3.select("#chkNonFatal").property("checked");
     const showIncident = d3.select("#chkIncident").property("checked");
 
-    // 1) Filter lineData
+    // Filter lineData
     const filteredData = lineData.filter(([severity]) => {
       if (severity === "Fatal")     return showFatal;
       if (severity === "Non-Fatal") return showNonFatal;
@@ -117,7 +123,7 @@ d3.csv("aircraft_incidents.csv").then(data => {
       return false;
     });
 
-    // 2) Draw lines
+    // Draw lines
     const paths = svgLine.selectAll(".severity-line")
       .data(filteredData, d => d[0]);
 
@@ -128,7 +134,7 @@ d3.csv("aircraft_incidents.csv").then(data => {
       .attr("fill", "none")
       .attr("stroke-width", 2)
       .merge(paths)
-      .attr("stroke", d => colorScale(d[0]))
+      .attr("stroke", ([severity]) => colorScale(severity))
       .transition().duration(500)
       .attr("d", ([severity, yearMap]) => {
         const points = Array.from(yearMap.entries())
@@ -137,7 +143,7 @@ d3.csv("aircraft_incidents.csv").then(data => {
         return line(points);
       });
 
-    // 3) Flatten data
+    // Flatten data
     let filteredFlattenedData = [];
     filteredData.forEach(([severity, yearMap]) => {
       const points = Array.from(yearMap.entries()).map(([year, count]) => ({
@@ -148,7 +154,7 @@ d3.csv("aircraft_incidents.csv").then(data => {
       filteredFlattenedData = filteredFlattenedData.concat(points);
     });
 
-    // 4) Circles
+    // Circles
     const circles = svgLine.selectAll(".data-point")
       .data(filteredFlattenedData);
 
@@ -164,10 +170,11 @@ d3.csv("aircraft_incidents.csv").then(data => {
       .style("fill", d => colorScale(d.severity))
       .style("opacity", 0)
       .on("mouseover", function(event, d) {
+        const renamed = severityDisplayNames[d.severity] || d.severity; 
         tooltip.style("visibility", "visible")
           .html(`
             <strong>Year:</strong> ${d.year}<br>
-            <strong>Severity:</strong> ${d.severity}<br>
+            <strong>Severity:</strong> ${renamed}<br>
             <strong>Incidents:</strong> ${d.count}
           `)
           .style("top", (event.pageY + 10) + "px")
@@ -202,4 +209,26 @@ d3.csv("aircraft_incidents.csv").then(data => {
   d3.select("#chkNonFatal").on("change", updateChart);
   d3.select("#chkIncident").on("change", updateChart);
 
+  // Legend
+  const legendData = ["Incident", "Non-Fatal", "Fatal"];
+
+  const legend = svgLine.selectAll(".legend")
+    .data(legendData)
+    .enter()
+    .append("g")
+    .attr("class", "legend")
+    .attr("transform", (d, i) => `translate(${width - 120}, ${10 + i * 20})`)
+
+  legend.append("rect")
+    .attr("width", 12)
+    .attr("height", 12)
+    .attr("fill", d => colorScale(d));
+
+  legend.append("text")
+    .attr("x", 18)
+    .attr("y", 10)
+    .style("font-size", "12px")
+    .text(d => severityDisplayNames[d])
+
 }); 
+

@@ -77,7 +77,7 @@ a:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10rem;
+    gap: 7rem;
 }
   
 .horizontal-container .item h2 {
